@@ -1920,6 +1920,7 @@ dependencies = [
  "nannou",
  "rand 0.8.5",
  "ringbuf",
+ "rusttype 0.8.3",
  "serde",
  "serde_yaml",
  "tune",

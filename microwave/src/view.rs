@@ -3,11 +3,10 @@ use std::{
     fmt::{self, Write},
     ops::Range,
 };
-
 use geom::Range as NannouRange;
 use nannou::prelude::*;
+use nannou::color::rgb_u32;
 use tune::{
-    math,
     note::Note,
     pitch::{Pitch, Pitched, Ratio},
     scala::KbmRoot,
@@ -35,7 +34,8 @@ impl<T: ViewModel> From<T> for DynViewModel {
 
 pub fn view(app: &App, model: &Model, frame: Frame) {
     let draw = app.draw();
-    let window_rect = app.window_rect();
+    let window_rect =
+        app.window_rect().pad(app.window_rect().w() / 10.0);
     let total_range =
         Ratio::between_pitches(model.pitch_at_left_border, model.pitch_at_right_border);
     let octave_width = Ratio::octave().num_equal_steps_of_size(total_range) as f32;
@@ -47,15 +47,10 @@ pub fn view(app: &App, model: &Model, frame: Frame) {
         KbmRoot::from(Note::from_piano_key(kbm_root.ref_key)),
     );
 
-    let render_second_keyboard = !model.scl_key_colors.is_empty();
-    let keyboard_rect = if render_second_keyboard {
-        Rect::from_w_h(window_rect.w(), window_rect.h() / 4.0)
-    } else {
-        Rect::from_w_h(window_rect.w(), window_rect.h() / 2.0)
-    };
+    let keyboard_rect = Rect::from_w_h(window_rect.w(), window_rect.h() / 4.0);
     let lower_keyboard_rect = keyboard_rect.align_bottom_of(window_rect);
 
-    draw.background().color(DIMGRAY);
+    draw.background().color(rgb_u32(0x2E3440));
     render_scale_lines(model, &draw, window_rect, octave_width, selected_tuning);
     render_keyboard(
         model,
@@ -66,26 +61,8 @@ pub fn view(app: &App, model: &Model, frame: Frame) {
         |key| get_12edo_key_color(key + kbm_root.ref_key.midi_number()),
     );
 
-    if render_second_keyboard {
-        let upper_keyboard_rect = keyboard_rect.above(lower_keyboard_rect);
-        render_keyboard(
-            model,
-            &draw,
-            upper_keyboard_rect,
-            octave_width,
-            selected_tuning,
-            |key| {
-                model.scl_key_colors[Into::<usize>::into(math::i32_rem_u(
-                    key,
-                    u16::try_from(model.scl_key_colors.len()).unwrap(),
-                ))]
-            },
-        );
-    }
-
     render_just_ratios_with_deviations(model, &draw, window_rect, octave_width);
     render_recording_indicator(model, &draw, window_rect);
-    render_hud(model, &draw, window_rect);
     draw.to_frame(app, &frame).unwrap();
 }
 
@@ -116,19 +93,23 @@ fn render_scale_lines(
 
         let line_color = match pitch_range.as_ref().filter(|r| !r.contains(&pitch)) {
             None => GRAY,
-            Some(_) => INDIANRED,
+            Some(_) => GRAY,
         };
 
         let line_color = match degree {
-            0 => SALMON,
-            _ => line_color,
+            0 => rgb_u32(0x434C5E),
+            _ => rgb_u32(0x434C5E),
         };
 
         draw.line()
             .start(Point2::new(pitch_position_on_screen, window_rect.top()))
             .end(Point2::new(pitch_position_on_screen, window_rect.bottom()))
             .color(line_color)
-            .weight(2.0);
+            .weight(1.0);
+        draw.ellipse()
+            .x_y(pitch_position_on_screen, window_rect.top())
+            .radius(2.0)
+            .color(rgb_u32(0x4C566A));
     }
 }
 
@@ -156,7 +137,7 @@ fn render_just_ratios_with_deviations(
         draw.line()
             .start(Point2::new(pitch_position_on_screen, window_rect.top()))
             .end(Point2::new(pitch_position_on_screen, window_rect.bottom()))
-            .color(WHITE)
+            .color(rgb_u32(0x4C566A))
             .weight(2.0);
 
         let mut curr_rect = Rect {
@@ -165,19 +146,19 @@ fn render_just_ratios_with_deviations(
         }
         .align_top_of(window_rect);
 
-        draw.text(&format!("{:.0} Hz", second.as_hz()))
-            .xy(curr_rect.xy())
-            .wh(curr_rect.wh())
-            .left_justify()
-            .color(RED)
-            .font_size(24);
+        // draw.text(&format!("{:.0} Hz", second.as_hz()))
+        //     .xy(curr_rect.xy())
+        //     .wh(curr_rect.wh())
+        //     .left_justify()
+        //     .color(RED)
+        //     .font_size(24);
 
         for first in others.iter() {
             let approximation =
                 Ratio::between_pitches(*first, *second).nearest_fraction(model.odd_limit);
 
             let width =
-                approximation.deviation.as_octaves() as f32 * octave_width * window_rect.w();
+                approximation.deviation.as_octaves() as f32 * octave_width * (window_rect.w() - 100.0);
             let deviation_bar_rect = Rect {
                 x: NannouRange::new(pitch_position_on_screen - width, pitch_position_on_screen),
                 y: NannouRange::from_pos_and_len(0.0, 24.0),
@@ -245,8 +226,8 @@ fn render_keyboard(
             let drawn_key = iterated_key - 1;
 
             let mut key_color = match get_key_color(drawn_key) {
-                KeyColor::White => LIGHTGRAY,
-                KeyColor::Black => BLACK,
+                KeyColor::White => rgb_u32(0x434C5E),
+                KeyColor::Black => rgb_u32(0x4C566A),
                 KeyColor::Red => DARKRED,
                 KeyColor::Green => FORESTGREEN,
                 KeyColor::Blue => MEDIUMBLUE,
@@ -272,17 +253,18 @@ fn render_keyboard(
                 rect.h(),
             );
 
-            if drawn_key == 0 {
-                draw.rect().color(RED).xy(key_rect.xy()).wh(key_rect.wh());
-            }
-
-            draw.rect()
+            draw.line()
+                .start(Point2::new(key_rect.x(), key_rect.y()))
+                .end(Point2::new(key_rect.x(), key_rect.y()-30.0))
                 .color(key_color)
-                .xy(key_rect.xy())
-                .w(0.9 * key_rect.w())
-                .h(0.98 * key_rect.h());
+                .weight(4.0);
         }
     }
+    draw.line()
+        .start(Point2::new(rect.left(), rect.y()))
+        .end(Point2::new(rect.right(), rect.y()))
+        .color(rgb_u32(0x81A1C1))
+        .weight(1.0);
 }
 
 fn render_recording_indicator(model: &Model, draw: &Draw, window_rect: Rect) {
@@ -292,83 +274,6 @@ fn render_recording_indicator(model: &Model, draw: &Draw, window_rect: Rect) {
     if model.storage.is_active(LiveParameter::Foot) {
         draw.ellipse().xy(rect.xy()).wh(rect.wh()).color(FIREBRICK);
     }
-}
-
-fn render_hud(model: &Model, draw: &Draw, window_rect: Rect) {
-    let mut hud_text = String::new();
-
-    writeln!(
-        hud_text,
-        "Scale: {scale}\n\
-         Reference Note [Alt+Left/Right]: {ref_note}\n\
-         Scale Offset [Left/Right]: {offset:+}",
-        scale = model.scl.description(),
-        ref_note = model.kbm.kbm_root().ref_key.midi_number(),
-        offset = model.kbm.kbm_root().root_offset
-    )
-    .unwrap();
-
-    if let Some(view_data) = &model.view_model {
-        view_data.write_info(&mut hud_text).unwrap();
-    }
-
-    let effects = [
-        LiveParameter::Sound1,
-        LiveParameter::Sound2,
-        LiveParameter::Sound3,
-        LiveParameter::Sound4,
-        LiveParameter::Sound5,
-        LiveParameter::Sound6,
-        LiveParameter::Sound7,
-        LiveParameter::Sound8,
-        LiveParameter::Sound9,
-        LiveParameter::Sound10,
-    ]
-    .into_iter()
-    .enumerate()
-    .filter(|&(_, p)| model.storage.is_active(p))
-    .map(|(i, p)| format!("{} (cc {})", i + 1, model.mapper.get_ccn(p).unwrap()))
-    .collect::<Vec<_>>();
-
-    writeln!(
-        hud_text,
-        "Tuning Mode [Alt+T]: {tuning_mode:?}\n\
-         Legato [Alt+L]: {legato}\n\
-         Effects [F1-F10]: {effects}\n\
-         Recording [Space]: {recording}\n\
-         Range [Alt+/Scroll]: {from:.0}..{to:.0} Hz",
-        tuning_mode = model.tuning_mode,
-        effects = effects.join(", "),
-        legato = if model.storage.is_active(LiveParameter::Legato) {
-            format!(
-                "ON (cc {})",
-                model.mapper.get_ccn(LiveParameter::Legato).unwrap()
-            )
-        } else {
-            "OFF".to_owned()
-        },
-        recording = if model.storage.is_active(LiveParameter::Foot) {
-            format!(
-                "ON (cc {})",
-                model.mapper.get_ccn(LiveParameter::Foot).unwrap()
-            )
-        } else {
-            "OFF".to_owned()
-        },
-        from = model.pitch_at_left_border.as_hz(),
-        to = model.pitch_at_right_border.as_hz(),
-    )
-    .unwrap();
-
-    let hud_rect = window_rect.shift_y(window_rect.h() / 2.0);
-
-    draw.text(&hud_text)
-        .xy(hud_rect.xy())
-        .wh(hud_rect.wh())
-        .align_text_bottom()
-        .left_justify()
-        .color(LIGHTGREEN)
-        .font_size(24);
 }
 
 fn get_12edo_key_color(key: i32) -> KeyColor {
